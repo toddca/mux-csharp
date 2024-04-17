@@ -24,6 +24,8 @@ using Newtonsoft.Json.Linq;
 using System.ComponentModel.DataAnnotations;
 using OpenAPIDateConverter = Mux.Csharp.Sdk.Client.OpenAPIDateConverter;
 
+#pragma warning disable CS0612 // Type or member is obsolete
+
 namespace Mux.Csharp.Sdk.Model
 {
     /// <summary>

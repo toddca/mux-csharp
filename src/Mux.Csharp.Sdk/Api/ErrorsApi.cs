@@ -137,7 +137,7 @@ namespace Mux.Csharp.Sdk.Api
         /// <returns></returns>
         public ErrorsApi(Mux.Csharp.Sdk.Client.Configuration configuration)
         {
-            if (configuration == null) throw new ArgumentNullException("configuration");
+            if (configuration == null) throw new ArgumentNullException(nameof(configuration));
 
             this.Configuration = Mux.Csharp.Sdk.Client.Configuration.MergeConfigurations(
                 Mux.Csharp.Sdk.Client.GlobalConfiguration.Instance,
@@ -157,9 +157,9 @@ namespace Mux.Csharp.Sdk.Api
         /// <param name="configuration">The configuration object.</param>
         public ErrorsApi(Mux.Csharp.Sdk.Client.ISynchronousClient client, Mux.Csharp.Sdk.Client.IAsynchronousClient asyncClient, Mux.Csharp.Sdk.Client.IReadableConfiguration configuration)
         {
-            if (client == null) throw new ArgumentNullException("client");
-            if (asyncClient == null) throw new ArgumentNullException("asyncClient");
-            if (configuration == null) throw new ArgumentNullException("configuration");
+            if (client == null) throw new ArgumentNullException(nameof(client));
+            if (asyncClient == null) throw new ArgumentNullException(nameof(asyncClient));
+            if (configuration == null) throw new ArgumentNullException(nameof(configuration));
 
             this.Client = client;
             this.AsynchronousClient = asyncClient;

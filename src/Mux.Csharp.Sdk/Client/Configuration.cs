@@ -132,13 +132,13 @@ namespace Mux.Csharp.Sdk.Client
             string basePath = "https://api.mux.com") : this()
         {
             if (string.IsNullOrWhiteSpace(basePath))
-                throw new ArgumentException("The provided basePath is invalid.", "basePath");
+                throw new ArgumentException("The provided basePath is invalid.", nameof(basePath));
             if (defaultHeaders == null)
-                throw new ArgumentNullException("defaultHeaders");
+                throw new ArgumentNullException(nameof(defaultHeaders));
             if (apiKey == null)
-                throw new ArgumentNullException("apiKey");
+                throw new ArgumentNullException(nameof(apiKey));
             if (apiKeyPrefix == null)
-                throw new ArgumentNullException("apiKeyPrefix");
+                throw new ArgumentNullException(nameof(apiKeyPrefix));
 
             BasePath = basePath;
 

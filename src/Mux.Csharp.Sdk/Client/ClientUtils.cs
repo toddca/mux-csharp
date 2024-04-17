@@ -119,7 +119,7 @@ namespace Mux.Csharp.Sdk.Client
 
             if (input == null)
             {
-                throw new ArgumentNullException("input");
+                throw new ArgumentNullException(nameof(input));
             }
 
             if (input.Length <= maxLength)

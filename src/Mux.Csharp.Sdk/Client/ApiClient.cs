@@ -10,36 +10,31 @@
 
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Reflection;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Formatters;
-using System.Text;
 using System.Threading;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using ErrorEventArgs = Newtonsoft.Json.Serialization.ErrorEventArgs;
 using RestSharp;
-using RestSharp.Deserializers;
 using RestSharpMethod = RestSharp.Method;
 using Polly;
+using RestSharp.Serializers;
+using RestSharp.Serializers.Xml;
+
 
 namespace Mux.Csharp.Sdk.Client
 {
     /// <summary>
     /// Allows RestSharp to Serialize/Deserialize JSON using our custom logic, but only when ContentType is JSON.
     /// </summary>
-    internal class CustomJsonCodec : RestSharp.Serializers.ISerializer, RestSharp.Deserializers.IDeserializer
+    internal class CustomJsonCodec : ISerializer, IDeserializer, IRestSerializer
     {
         private readonly IReadableConfiguration _configuration;
-        private static readonly string _contentType = "application/json";
+        private static readonly ContentType _contentType = RestSharp.ContentType.Json;
         private readonly JsonSerializerSettings _serializerSettings = new JsonSerializerSettings
         {
             // OpenAPI generated types generally hide default constructors.
@@ -82,7 +77,7 @@ namespace Mux.Csharp.Sdk.Client
             }
         }
 
-        public T Deserialize<T>(IRestResponse response)
+        public T Deserialize<T>(RestResponse response)
         {
             var result = (T)Deserialize(response, typeof(T));
             return result;
@@ -94,7 +89,7 @@ namespace Mux.Csharp.Sdk.Client
         /// <param name="response">The HTTP response.</param>
         /// <param name="type">Object type.</param>
         /// <returns>Object representation of the JSON string.</returns>
-        internal object Deserialize(IRestResponse response, Type type)
+        internal object Deserialize(RestResponse response, Type type)
         {
             if (type == typeof(byte[])) // return byte array
             {
@@ -151,11 +146,26 @@ namespace Mux.Csharp.Sdk.Client
         public string Namespace { get; set; }
         public string DateFormat { get; set; }
 
-        public string ContentType
+        public ContentType ContentType
         {
-            get { return _contentType; }
-            set { throw new InvalidOperationException("Not allowed to set content type."); }
+            get => _contentType;
+            set => throw new InvalidOperationException("Not allowed to set content type.");
         }
+
+        public string Serialize(Parameter bodyParameter)
+        {
+            return bodyParameter.Value != null ? Serialize(bodyParameter.Value) : null;
+        }
+
+        public ISerializer Serializer => this;
+
+        public IDeserializer Deserializer => this;
+
+        public string[] AcceptedContentTypes { get; } = { "application/json", "text/json", "text/x-json", "text/javascript", "*+json" };
+
+        public SupportsContentType SupportsContentType => type => type.Equals(ContentType.Json);
+        
+        public DataFormat DataFormat => DataFormat.Json;
     }
     /// <summary>
     /// Provides a default implementation of an Api client (both synchronous and asynchronous implementations),
@@ -186,14 +196,14 @@ namespace Mux.Csharp.Sdk.Client
         /// Allows for extending request processing for <see cref="ApiClient"/> generated code.
         /// </summary>
         /// <param name="request">The RestSharp request object</param>
-        partial void InterceptRequest(IRestRequest request);
+        partial void InterceptRequest(RestRequest request);
 
         /// <summary>
         /// Allows for extending response processing for <see cref="ApiClient"/> generated code.
         /// </summary>
         /// <param name="request">The RestSharp request object</param>
         /// <param name="response">The RestSharp response object</param>
-        partial void InterceptResponse(IRestRequest request, IRestResponse response);
+        partial void InterceptResponse(RestRequest request, RestResponse response);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ApiClient" />, defaulting to the global configurations' base url.
@@ -228,28 +238,28 @@ namespace Mux.Csharp.Sdk.Client
             switch (method)
             {
                 case HttpMethod.Get:
-                    other = RestSharpMethod.GET;
+                    other = RestSharpMethod.Get;
                     break;
                 case HttpMethod.Post:
-                    other = RestSharpMethod.POST;
+                    other = RestSharpMethod.Post;
                     break;
                 case HttpMethod.Put:
-                    other = RestSharpMethod.PUT;
+                    other = RestSharpMethod.Put;
                     break;
                 case HttpMethod.Delete:
-                    other = RestSharpMethod.DELETE;
+                    other = RestSharpMethod.Delete;
                     break;
                 case HttpMethod.Head:
-                    other = RestSharpMethod.HEAD;
+                    other = RestSharpMethod.Head;
                     break;
                 case HttpMethod.Options:
-                    other = RestSharpMethod.OPTIONS;
+                    other = RestSharpMethod.Options;
                     break;
                 case HttpMethod.Patch:
-                    other = RestSharpMethod.PATCH;
+                    other = RestSharpMethod.Patch;
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException("method", method, null);
+                    throw new ArgumentOutOfRangeException(nameof(method), method, null);
             }
 
             return other;
@@ -273,14 +283,13 @@ namespace Mux.Csharp.Sdk.Client
             RequestOptions options,
             IReadableConfiguration configuration)
         {
-            if (path == null) throw new ArgumentNullException("path");
-            if (options == null) throw new ArgumentNullException("options");
-            if (configuration == null) throw new ArgumentNullException("configuration");
+            if (path == null) throw new ArgumentNullException(nameof(path));
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (configuration == null) throw new ArgumentNullException(nameof(configuration));
 
-            RestRequest request = new RestRequest(Method(method))
+            var request = new RestRequest(_baseUrl, Method(method))
             {
-                Resource = path,
-                JsonSerializer = new CustomJsonCodec(SerializerSettings, configuration)
+                Resource = path
             };
 
             if (options.PathParameters != null)
@@ -376,9 +385,9 @@ namespace Mux.Csharp.Sdk.Client
                         var bytes = ClientUtils.ReadAsBytes(file);
                         var fileStream = file as FileStream;
                         if (fileStream != null)
-                            request.Files.Add(FileParameter.Create(fileParam.Key, bytes, System.IO.Path.GetFileName(fileStream.Name)));
+                            request.AddFile(fileParam.Key, bytes, System.IO.Path.GetFileName(fileStream.Name));
                         else
-                            request.Files.Add(FileParameter.Create(fileParam.Key, bytes, "no_file_name_provided"));
+                            request.AddFile(fileParam.Key, bytes, "no_file_name_provided");
                     }
                 }
             }
@@ -387,14 +396,14 @@ namespace Mux.Csharp.Sdk.Client
             {
                 foreach (var cookie in options.Cookies)
                 {
-                    request.AddCookie(cookie.Name, cookie.Value);
+                    request.AddCookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain);
                 }
             }
 
             return request;
         }
 
-        private ApiResponse<T> ToApiResponse<T>(IRestResponse<T> response)
+        private ApiResponse<T> ToApiResponse<T>(RestResponse<T> response)
         {
             T result = response.Data;
             string rawContent = response.Content;
@@ -415,7 +424,7 @@ namespace Mux.Csharp.Sdk.Client
 
             if (response.Cookies != null)
             {
-                foreach (var responseCookies in response.Cookies)
+                foreach (Cookie responseCookies in response.Cookies)
                 {
                     transformed.Cookies.Add(
                         new Cookie(
@@ -430,63 +439,61 @@ namespace Mux.Csharp.Sdk.Client
             return transformed;
         }
 
+        private RestClient BuildClient(IReadableConfiguration configuration)
+        {
+            var client = new RestClient(_baseUrl,
+                                        options =>
+                                        {
+                                            options.MaxTimeout = configuration.Timeout;
+                                            
+                                            if (configuration.Proxy != null)
+                                            {
+                                                options.Proxy = configuration.Proxy;
+                                            }
+
+                                            if (configuration.UserAgent != null)
+                                            {
+                                                options.UserAgent = configuration.UserAgent;
+                                            }
+
+                                            if (configuration.ClientCertificates != null)
+                                            {
+                                                options.ClientCertificates = configuration.ClientCertificates;
+                                            }
+
+                                            options.ConfigureMessageHandler = handler =>
+                                            {
+                                                
+
+                                                return handler;
+                                            };
+
+                                        },
+                                        headers => { },
+                                        serializer =>
+                                        {
+                                            serializer.UseSerializer(() => new CustomJsonCodec(SerializerSettings, configuration));
+                                            serializer.UseXmlSerializer();
+                                        });
+
+            
+
+            return client;
+        }
+
         private ApiResponse<T> Exec<T>(RestRequest req, IReadableConfiguration configuration)
         {
-            RestClient client = new RestClient(_baseUrl);
-
-            client.ClearHandlers();
-            var existingDeserializer = req.JsonSerializer as IDeserializer;
-            if (existingDeserializer != null)
-            {
-                client.AddHandler("application/json", () => existingDeserializer);
-                client.AddHandler("text/json", () => existingDeserializer);
-                client.AddHandler("text/x-json", () => existingDeserializer);
-                client.AddHandler("text/javascript", () => existingDeserializer);
-                client.AddHandler("*+json", () => existingDeserializer);
-            }
-            else
-            {
-                var customDeserializer = new CustomJsonCodec(SerializerSettings, configuration);
-                client.AddHandler("application/json", () => customDeserializer);
-                client.AddHandler("text/json", () => customDeserializer);
-                client.AddHandler("text/x-json", () => customDeserializer);
-                client.AddHandler("text/javascript", () => customDeserializer);
-                client.AddHandler("*+json", () => customDeserializer);
-            }
-
-            var xmlDeserializer = new XmlDeserializer();
-            client.AddHandler("application/xml", () => xmlDeserializer);
-            client.AddHandler("text/xml", () => xmlDeserializer);
-            client.AddHandler("*+xml", () => xmlDeserializer);
-            client.AddHandler("*", () => xmlDeserializer);
-
-            client.Timeout = configuration.Timeout;
-
-            if (configuration.Proxy != null)
-            {
-                client.Proxy = configuration.Proxy;
-            }
-
-            if (configuration.UserAgent != null)
-            {
-                client.UserAgent = configuration.UserAgent;
-            }
-
-            if (configuration.ClientCertificates != null)
-            {
-                client.ClientCertificates = configuration.ClientCertificates;
-            }
-
+            var client = BuildClient(configuration);
+            
             InterceptRequest(req);
 
-            IRestResponse<T> response;
+            RestResponse<T> response;
             if (RetryConfiguration.RetryPolicy != null)
             {
                 var policy = RetryConfiguration.RetryPolicy;
                 var policyResult = policy.ExecuteAndCapture(() => client.Execute(req));
-                response = (policyResult.Outcome == OutcomeType.Successful) ? client.Deserialize<T>(policyResult.Result) : new RestResponse<T>
+                response = (policyResult.Outcome == OutcomeType.Successful) ? client.Deserialize<T>(policyResult.Result) : new RestResponse<T>(req)
                 {
-                    Request = req,
                     ErrorException = policyResult.FinalException
                 };
             }
@@ -523,7 +530,7 @@ namespace Mux.Csharp.Sdk.Client
             if (response.Cookies != null && response.Cookies.Count > 0)
             {
                 if (result.Cookies == null) result.Cookies = new List<Cookie>();
-                foreach (var restResponseCookie in response.Cookies)
+                foreach (Cookie restResponseCookie in response.Cookies)
                 {
                     var cookie = new Cookie(
                         restResponseCookie.Name,
@@ -549,63 +556,19 @@ namespace Mux.Csharp.Sdk.Client
             return result;
         }
 
-        private async Task<ApiResponse<T>> ExecAsync<T>(RestRequest req, IReadableConfiguration configuration, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        private async Task<ApiResponse<T>> ExecAsync<T>(RestRequest req, IReadableConfiguration configuration, CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
-            RestClient client = new RestClient(_baseUrl);
-
-            client.ClearHandlers();
-            var existingDeserializer = req.JsonSerializer as IDeserializer;
-            if (existingDeserializer != null)
-            {
-                client.AddHandler("application/json", () => existingDeserializer);
-                client.AddHandler("text/json", () => existingDeserializer);
-                client.AddHandler("text/x-json", () => existingDeserializer);
-                client.AddHandler("text/javascript", () => existingDeserializer);
-                client.AddHandler("*+json", () => existingDeserializer);
-            }
-            else
-            {
-                var customDeserializer = new CustomJsonCodec(SerializerSettings, configuration);
-                client.AddHandler("application/json", () => customDeserializer);
-                client.AddHandler("text/json", () => customDeserializer);
-                client.AddHandler("text/x-json", () => customDeserializer);
-                client.AddHandler("text/javascript", () => customDeserializer);
-                client.AddHandler("*+json", () => customDeserializer);
-            }
-
-            var xmlDeserializer = new XmlDeserializer();
-            client.AddHandler("application/xml", () => xmlDeserializer);
-            client.AddHandler("text/xml", () => xmlDeserializer);
-            client.AddHandler("*+xml", () => xmlDeserializer);
-            client.AddHandler("*", () => xmlDeserializer);
-
-            client.Timeout = configuration.Timeout;
-
-            if (configuration.Proxy != null)
-            {
-                client.Proxy = configuration.Proxy;
-            }
-
-            if (configuration.UserAgent != null)
-            {
-                client.UserAgent = configuration.UserAgent;
-            }
-
-            if (configuration.ClientCertificates != null)
-            {
-                client.ClientCertificates = configuration.ClientCertificates;
-            }
+            var client = BuildClient(configuration);
 
             InterceptRequest(req);
 
-            IRestResponse<T> response;
+            RestResponse<T> response;
             if (RetryConfiguration.AsyncRetryPolicy != null)
             {
                 var policy = RetryConfiguration.AsyncRetryPolicy;
                 var policyResult = await policy.ExecuteAndCaptureAsync((ct) => client.ExecuteAsync(req, ct), cancellationToken).ConfigureAwait(false);
-                response = (policyResult.Outcome == OutcomeType.Successful) ? client.Deserialize<T>(policyResult.Result) : new RestResponse<T>
+                response = (policyResult.Outcome == OutcomeType.Successful) ? client.Deserialize<T>(policyResult.Result) : new RestResponse<T>(req)
                 {
-                    Request = req,
                     ErrorException = policyResult.FinalException
                 };
             }
@@ -635,7 +598,7 @@ namespace Mux.Csharp.Sdk.Client
             if (response.Cookies != null && response.Cookies.Count > 0)
             {
                 if (result.Cookies == null) result.Cookies = new List<Cookie>();
-                foreach (var restResponseCookie in response.Cookies)
+                foreach (Cookie restResponseCookie in response.Cookies)
                 {
                     var cookie = new Cookie(
                         restResponseCookie.Name,
@@ -660,6 +623,8 @@ namespace Mux.Csharp.Sdk.Client
             }
             return result;
         }
+
+        
 
         #region IAsynchronousClient
         /// <summary>
