@@ -181,6 +181,7 @@ namespace Mux.Csharp.Sdk.Client
         /// </summary>
         public JsonSerializerSettings SerializerSettings { get; set; } = new JsonSerializerSettings
         {
+            NullValueHandling = NullValueHandling.Ignore,
             // OpenAPI generated types generally hide default constructors.
             ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
             ContractResolver = new DefaultContractResolver
@@ -460,14 +461,6 @@ namespace Mux.Csharp.Sdk.Client
                                             {
                                                 options.ClientCertificates = configuration.ClientCertificates;
                                             }
-
-                                            options.ConfigureMessageHandler = handler =>
-                                            {
-                                                
-
-                                                return handler;
-                                            };
-
                                         },
                                         headers => { },
                                         serializer =>
@@ -477,7 +470,6 @@ namespace Mux.Csharp.Sdk.Client
                                         });
 
             
-
             return client;
         }
 

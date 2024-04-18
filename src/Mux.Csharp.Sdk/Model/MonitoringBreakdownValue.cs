@@ -62,7 +62,7 @@ namespace Mux.Csharp.Sdk.Model
         /// Gets or Sets NegativeImpact
         /// </summary>
         [DataMember(Name = "negative_impact", EmitDefaultValue = false)]
-        public long NegativeImpact { get; set; }
+        public long? NegativeImpact { get; set; }
 
         /// <summary>
         /// Gets or Sets MetricValue
